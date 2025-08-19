@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	list "github.com/charmbracelet/bubbles/v2/list"
 	"github.com/charmbracelet/lipgloss/v2"
@@ -54,11 +55,20 @@ func (d commitDelegate) Render(w io.Writer, m list.Model, index int, it list.Ite
 			style = style.Background(theme.Red).Foreground(theme.Crust)
 		}
 		pre := style.Render(lbl) + " "
+		// Build optional tag badges if any
+		tagStr := ""
+		if len(ci.Commit.Tags) > 0 {
+			// Render tags as compact badges
+			tagStyle := lipgloss.NewStyle().Foreground(theme.Yellow)
+			// Join with a subtle separator
+			joined := strings.Join(ci.Commit.Tags, ", ")
+			tagStr = " " + tagStyle.Render("["+joined+"]")
+		}
 		subj := ci.Commit.Subject
 		if index == m.Index() {
 			subj = lipgloss.NewStyle().Foreground(theme.Mauve).Bold(true).Render(subj)
 		}
-		wi := wrappedItem{base: ci, title: pre + subj}
+		wi := wrappedItem{base: ci, title: pre + subj + tagStr}
 		d.DefaultDelegate.Render(w, m, index, wi)
 		return
 	}
