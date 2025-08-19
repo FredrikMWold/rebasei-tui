@@ -57,7 +57,10 @@ func initialModel() (model, error) {
 	l.SetShowStatusBar(false)
 	// Disable built-in filtering UI and behavior
 	l.SetShowFilter(false)
-	l.SetShowPagination(false)
+	// Show built-in paginator at the bottom of the list
+	l.SetShowPagination(true)
+	// Subtle pagination style to fit the theme
+	l.Styles.PaginationStyle = lipgloss.NewStyle().Foreground(theme.Subtext0)
 	l.SetFilteringEnabled(false)
 
 	// Provide only our desired help entries using Additional help keys
