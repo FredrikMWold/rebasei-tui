@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"io"
 	"strings"
 
@@ -20,7 +21,14 @@ type commitItem struct {
 
 func (c commitItem) Title() string { return c.Commit.Subject }
 func (c commitItem) Description() string {
-	return fmt.Sprintf("%s • %s • %s", c.Commit.HashShort, c.Commit.Author, c.Commit.Date)
+	// Colored labels (text color only) using theme accents
+	lbl := func(c color.Color, text string) string {
+		return lipgloss.NewStyle().Foreground(c).Bold(true).Render(text)
+	}
+	hashLbl := lbl(theme.Blue, "Hash:")
+	authorLbl := lbl(theme.Green, "Author:")
+	dateLbl := lbl(theme.Peach, "Date:")
+	return fmt.Sprintf("%s %s  %s %s  %s %s", hashLbl, c.Commit.HashShort, authorLbl, c.Commit.Author, dateLbl, c.Commit.Date)
 }
 func (c commitItem) FilterValue() string { return c.Commit.Subject }
 
@@ -41,6 +49,9 @@ func (d commitDelegate) Render(w io.Writer, m list.Model, index int, it list.Ite
 	if ci, ok := it.(commitItem); ok {
 		// Build a colored action label tag with symmetric padding.
 		lbl := string(ci.Act)
+		if len(lbl) > 0 {
+			lbl = strings.ToUpper(lbl[:1]) + lbl[1:]
+		}
 		style := lipgloss.NewStyle().Padding(0, 1)
 		switch ci.Act {
 		case pick:

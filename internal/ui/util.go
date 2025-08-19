@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss/v2"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss/v2"
+)
 
 // truncateToWidth returns a string cut to maxWidth characters (approx display width) with an ellipsis when truncated.
 func truncateToWidth(s string, maxWidth int) string {
@@ -29,4 +33,17 @@ func truncateToWidth(s string, maxWidth int) string {
 		w += rw
 	}
 	return string(b) + ell
+}
+
+// countLines returns the number of visual lines by counting newlines in s.
+// Trailing newline is ignored to avoid off-by-one.
+func countLines(s string) int {
+	if s == "" {
+		return 0
+	}
+	s = strings.TrimSuffix(s, "\n")
+	if s == "" {
+		return 0
+	}
+	return 1 + strings.Count(s, "\n")
 }

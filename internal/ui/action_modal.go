@@ -15,9 +15,21 @@ import (
 // actionOption represents an action in the modal list.
 type actionOption struct{ Act action }
 
-func (a actionOption) Title() string       { return string(a.Act) }
+func (a actionOption) Title() string {
+	s := string(a.Act)
+	if len(s) > 0 {
+		s = strings.ToUpper(s[:1]) + s[1:]
+	}
+	return s
+}
 func (a actionOption) Description() string { return "" }
-func (a actionOption) FilterValue() string { return string(a.Act) }
+func (a actionOption) FilterValue() string {
+	s := string(a.Act)
+	if len(s) > 0 {
+		s = strings.ToUpper(s[:1]) + s[1:]
+	}
+	return s
+}
 
 // openActionModal initializes and opens the action selection modal.
 func (m *model) openActionModal() {
@@ -118,21 +130,21 @@ func (simpleActionDelegate) Render(w io.Writer, m list.Model, index int, it list
 }
 
 // renderActionModal renders the action selection list inside a bordered box using lipgloss compositor.
-func (m model) renderActionModal() string {
+func (m model) renderActionModal(availW, availH int) string {
 	// Responsive layout parameters based on terminal size
 	sidePad := 1
-	if m.width <= 20 {
+	if availW <= 20 {
 		sidePad = 0
 	}
 	// inner content width available inside border and padding
-	inner := m.width - 2 - (2 * sidePad)
+	inner := availW - 2 - (2 * sidePad)
 	if inner < 8 {
 		inner = 8
 	}
 	// Determine what to show given width/height constraints
 	showDesc := inner >= 28
-	showTitle := m.height >= 9
-	showGap := m.height >= 11
+	showTitle := availH >= 9
+	showGap := availH >= 11
 	labelPad := 1
 	if inner < 16 {
 		labelPad = 0
@@ -174,7 +186,12 @@ func (m model) renderActionModal() string {
 		case drop:
 			lblStyle = lblStyle.Background(theme.Red).Foreground(theme.Crust)
 		}
-		label := lblStyle.Render(string(ao.Act))
+		// Capitalize action label text
+		lbl := string(ao.Act)
+		if len(lbl) > 0 {
+			lbl = strings.ToUpper(lbl[:1]) + lbl[1:]
+		}
+		label := lblStyle.Render(lbl)
 
 		// compute remaining width for description on this line
 		prefixWidth := 2 // either "> " or two spaces

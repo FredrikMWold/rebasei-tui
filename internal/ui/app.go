@@ -17,7 +17,10 @@ type model struct {
 	status string
 	width  int
 	height int
-	ready  bool
+	// inner content size inside the app border
+	innerWidth  int
+	innerHeight int
+	ready       bool
 	// when true, quit the TUI and run rebase with the captured actions
 	doRebase bool
 	actions  []commands.CommitAction
@@ -166,16 +169,56 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		// Reserve space for status line only when present
-		height := msg.Height
+		// Compute inner size accounting for outer app border and optional status line inside it
+		innerW := msg.Width - 2 // border left+right
+		if innerW < 0 {
+			innerW = 0
+		}
+		innerH := msg.Height - 2 // border top+bottom
 		if m.status != "" {
-			height -= 1
+			innerH -= 1 // space for status line inside the border
 		}
-		if height < 0 {
-			height = 0
+		if innerH < 0 {
+			innerH = 0
 		}
-		// Ensure the list takes the full terminal width for full-row backgrounds
-		m.list.SetSize(msg.Width, height)
+		m.innerWidth, m.innerHeight = innerW, innerH
+
+		// Gate help & pagination visibility by size thresholds to avoid wrapping
+		const minHelpWidth = 52
+		const minPagWidth = 24
+		showHelp := innerH >= 6 && innerW >= minHelpWidth
+		showPagination := innerH >= 4 && innerW >= minPagWidth
+		m.list.SetShowHelp(showHelp)
+		m.list.SetShowPagination(showPagination)
+		m.list.SetShowStatusBar(false)
+		// Constrain help/footer to the available width so it won't exceed the box
+		m.list.Styles.HelpStyle = lipgloss.NewStyle().Foreground(theme.Surface2).MaxWidth(innerW)
+
+		// Compute how many chrome lines we have (title + optional pagination + optional help)
+		chrome := 0
+		if m.list.Title != "" {
+			chrome += 1
+		}
+		if showPagination {
+			chrome += 1
+		}
+		if showHelp {
+			chrome += 1
+		}
+		viewportH := max(0, innerH-chrome)
+		m.list.SetSize(innerW, viewportH)
+
+		// Calibrate viewport height so total rendered lines equals inner height.
+		for i := 0; i < 3; i++ {
+			lines := countLines(m.list.View())
+			delta := innerH - lines
+			if delta == 0 {
+				break
+			}
+			viewportH = max(0, viewportH+delta)
+			m.list.SetSize(innerW, viewportH)
+		}
+
 		m.ready = true
 	}
 
@@ -239,33 +282,72 @@ func (m *model) setAction(a action) tea.Cmd {
 
 func (m model) View() string {
 	content := m.list.View()
+	// Helper to build the app border style
+	appBoxStyle := func() lipgloss.Style {
+		return lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Mauve).Foreground(theme.Text)
+	}
+	// Calibrate inner width so that the total rendered width (including border)
+	// exactly matches the terminal width. This compensates for terminals that
+	// treat box characters as ambiguous width.
+	calibrateInner := func(targetInner int) int {
+		appBox := appBoxStyle().Width(targetInner)
+		probe := lipgloss.NewStyle().Width(targetInner).Render("")
+		total := lipgloss.Width(appBox.Render(probe))
+		if total < m.width {
+			// Bump inner width by the difference, cap to avoid overshoot
+			diff := m.width - total
+			// Safety cap: don't increase by more than 2 cols
+			if diff > 2 {
+				diff = 2
+			}
+			return targetInner + diff
+		}
+		return targetInner
+	}
 	if m.modalOpen {
 		// Build modal content
-		modal := m.renderActionModal()
+		modal := m.renderActionModal(m.innerWidth, m.innerHeight)
 		// Compose base content and modal using lipgloss compositor
-		base := lipgloss.NewLayer(content)
+		// Ensure base layer spans the full inner width so centering works
+		baseContent := lipgloss.NewStyle().Width(m.innerWidth).Render(content)
+		base := lipgloss.NewLayer(baseContent)
 		// Center the modal
 		mw := lipgloss.Width(modal)
 		mh := lipgloss.Height(modal)
-		x := max(0, (m.width-mw)/2)
-		// Center vertically
-		y := max(0, (m.height-mh)/2)
+		x := max(0, (m.innerWidth-mw)/2)
+		// Center vertically within inner area
+		y := max(0, (m.innerHeight-mh)/2)
 		canvas := lipgloss.NewCanvas(
 			base,
 			lipgloss.NewLayer(modal).X(x).Y(y).Z(10),
 		)
 		rendered := canvas.Render()
 		if m.status == "" {
-			return rendered
+			// Wrap entire app with a border
+			effectiveInner := calibrateInner(m.innerWidth)
+			appBox := appBoxStyle().Width(effectiveInner)
+			return appBox.Render(lipgloss.NewStyle().Width(effectiveInner).Render(rendered))
 		}
-		status := lipgloss.NewStyle().Foreground(theme.Subtext0).Background(theme.Surface0).Render(m.status)
-		return rendered + "\n" + status
+		status := lipgloss.NewStyle().Foreground(theme.Subtext0).Background(theme.Surface0).Width(m.innerWidth).Render(m.status)
+		body := rendered + "\n" + status
+		effectiveInner := calibrateInner(m.innerWidth)
+		appBox := appBoxStyle().Width(effectiveInner)
+		return appBox.Render(lipgloss.NewStyle().Width(effectiveInner).Render(body))
 	}
 	if m.status == "" {
-		return content
+		effectiveInner := calibrateInner(m.innerWidth)
+		appBox := appBoxStyle().Width(effectiveInner)
+		// Ensure content spans inner width for a consistent border size
+		body := lipgloss.NewStyle().Width(effectiveInner).Render(content)
+		return appBox.Render(body)
 	}
-	status := lipgloss.NewStyle().Foreground(theme.Subtext0).Background(theme.Surface0).Render(m.status)
-	return content + "\n" + status
+	effectiveInner := calibrateInner(m.innerWidth)
+	status := lipgloss.NewStyle().Foreground(theme.Subtext0).Background(theme.Surface0).Width(effectiveInner).Render(m.status)
+	body := lipgloss.NewStyle().Width(effectiveInner).Render(content) + "\n" + status
+	appBox := appBoxStyle().Width(effectiveInner)
+	return appBox.Render(body)
 }
 
 func (m model) collectActions() []commands.CommitAction {
