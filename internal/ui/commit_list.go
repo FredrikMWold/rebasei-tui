@@ -71,9 +71,12 @@ func (d commitDelegate) Render(w io.Writer, m list.Model, index int, it list.Ite
 		if len(ci.Commit.Tags) > 0 {
 			// Render tags as compact badges
 			tagStyle := lipgloss.NewStyle().Foreground(theme.Yellow)
-			// Join with a subtle separator
-			joined := strings.Join(ci.Commit.Tags, ", ")
-			tagStr = " " + tagStyle.Render("["+joined+"]")
+			// Render each tag as its own bracketed badge: [tag1] [tag2]
+			parts := make([]string, 0, len(ci.Commit.Tags))
+			for _, t := range ci.Commit.Tags {
+				parts = append(parts, tagStyle.Render("["+t+"]"))
+			}
+			tagStr = " " + strings.Join(parts, "")
 		}
 		subj := ci.Commit.Subject
 		if index == m.Index() {
